@@ -1,0 +1,20 @@
+# Secrets — never commit keys
+secrets.json
+
+# Private Codex home (user-specific auth, sqlite, catalog)
+codex-home/
+
+# Standalone app copy (2.3 GB, Windows binary)
+CodexApp/
+
+# Scratch / temp
+.tmp/
+testhome/
+
+# Adapter logs
+adapter/adapter.log
+adapter/adapter.log.err
+
+# OS junk
+.DS_Store
+Thumbs.db

@@ -1,0 +1,10 @@
+﻿import { readArchive, walk } from "./asar-lib.mjs";
+const p = "C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.1027.3384.0_x64__2p2nqsd0c76g0\\app\\resources\\app.asar";
+const { fd, header } = readArchive(p);
+const files = walk(header);
+console.log("=== .vite/build ===");
+for (const f of files) if (f.path.startsWith(".vite/build/")) console.log(f.path, f.entry.size);
+console.log("=== webview/apps (dirs) ===");
+const apps = header.files.webview.files.apps.files;
+for (const [name, node] of Object.entries(apps)) console.log(name + (node.files ? "/" : ""), node.files ? Object.keys(node.files).length + " entries" : node.size);
+import fs from "node:fs"; fs.closeSync(fd);

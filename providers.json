@@ -1,0 +1,14 @@
+{
+  "opencode": {
+    "label": "OpenCode Zen",
+    "upstreamBaseUrl": "https://opencode.ai/inference/openai/v1",
+    "apiKeyEnv": "OPENCODE_API_KEY",
+    "model": "deepseek-v4.1-flash-free"
+  },
+  "nvidia": {
+    "label": "NVIDIA NIM",
+    "upstreamBaseUrl": "https://integrate.api.nvidia.com/v1",
+    "apiKeyEnv": "NVIDIA_API_KEY",
+    "model": "nvidia/nemotron-3.5-lightning-30b-a3b"
+  }
+}
