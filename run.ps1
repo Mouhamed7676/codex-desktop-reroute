@@ -7,11 +7,13 @@
   Usage:
     .\run.ps1 -Provider nvidia
     .\run.ps1 -Provider nvidia -Larp        # picker shows OpenAI names, wire runs NVIDIA
+    .\run.ps1 -Provider nvidia -Combined    # picker shows NVIDIA + OpenCode Zen side by side
     .\run.ps1 -Provider nvidia -ChatName "roblox-mcp"
     .\run.ps1 -Provider opencode
     .\run.ps1 -Provider opencode -NoApp      # bridge only, for `codex exec`
 
   The key comes from, in order: -ApiKey, the provider's env var, secrets.json.
+  OpenCode's key is auto-read from ~/.local/share/opencode/auth.json if secrets.json is empty.
 #>
 
 [CmdletBinding()]
@@ -24,6 +26,8 @@ param(
   [int]$Port = 8787,
 
   [switch]$Larp,
+
+  [switch]$Combined,
 
   [switch]$NoApp,
 
@@ -45,7 +49,18 @@ if (-not $ApiKey) {
   }
 }
 if (-not $ApiKey) {
-  Write-Warning "no API key for $($preset.label); upstream calls will 401. Pass -ApiKey or set $($preset.apiKeyEnv)."
+  # OpenCode's real key lives in ~/.local/share/opencode/auth.json; secrets.json
+  # deliberately leaves it empty so it never gets committed.
+  if ($Provider -eq "opencode") {
+    $authPath = Join-Path $env:USERPROFILE ".local/share/opencode/auth.json"
+    if (Test-Path $authPath) {
+      $auth = Get-Content $authPath -Raw | ConvertFrom-Json
+      if ($auth.opencode.key) { $ApiKey = $auth.opencode.key }
+    }
+  }
+  if (-not $ApiKey) {
+    Write-Warning "no API key for $($preset.label); upstream calls will 401. Pass -ApiKey or set $($preset.apiKeyEnv)."
+  }
 }
 
 # --- adapter env ---
@@ -54,18 +69,31 @@ $env:HOST = "127.0.0.1"
 $env:UPSTREAM_BASE_URL = $preset.upstreamBaseUrl
 $env:UPSTREAM_API_KEY = $ApiKey
 
-$catalogSource = Join-Path $root $(if ($Larp) { "catalogs\larp.json" } else { "catalogs\nvidia.json" })
+$catalogSource = Join-Path $root $(if ($Larp) { "catalogs\larp.json" } elseif ($Combined) { "catalogs\combined.json" } else { "catalogs\nvidia.json" })
 $catalogPath = Join-Path $root "codex-home\model-catalog.json"
 $configPath = Join-Path $root "codex-home\config.toml"
 if (-not (Test-Path $catalogSource)) { throw "catalog missing at $catalogSource" }
 
 $defaultModel = $preset.model
 $modelMap = @{ "*" = $preset.model }
+
 if ($Larp) {
   $larpSpec = Get-Content (Join-Path $root "larp.json") -Raw | ConvertFrom-Json
   $larpMap = Get-Content (Join-Path $root "catalogs\larp-map.json") -Raw | ConvertFrom-Json
   foreach ($p in $larpMap.PSObject.Properties) { $modelMap[$p.Name] = $p.Value }
   if ($larpSpec.default) { $defaultModel = $larpSpec.default }
+} elseif ($Combined) {
+  $catalog = Get-Content $catalogSource -Raw | ConvertFrom-Json
+  $zenBase = $providers.opencode.upstreamBaseUrl
+  foreach ($m in $catalog.models) {
+    if ($m._zen -eq $true) {
+      # Zen models route to the OpenCode Zen base, not the default upstream.
+      $modelMap[$m.slug] = @{ base = $zenBase; model = $m.slug }
+    } else {
+      $modelMap[$m.slug] = $m.slug
+    }
+  }
+  if ($defaultModel -notin $catalog.models.slug) { $defaultModel = $catalog.models[0].slug }
 } else {
   $catalog = Get-Content $catalogSource -Raw | ConvertFrom-Json
   foreach ($m in $catalog.models) { $modelMap[$m.slug] = $m.slug }
@@ -132,7 +160,7 @@ try {
 
       $escapedName = $ChatName -replace "'", "''"
       $escapedCwd = $cwd -replace "'", "''"
-      $sql = "INSERT INTO threads (id, rollout_path, created_at, updated_at, source, model_provider, cwd, title, sandbox_policy, approval_mode, model, reasoning_effort, history_mode, name, first_user_message, preview) VALUES ('$threadId', '', $nowSec, $nowSec, 'user', 'bridge', '$escapedCwd', '$escapedName', 'workspace-write', 'on-request', '$model', 'low', 'legacy', '$escapedName', '$escapedName', '');"
+      $sql = "INSERT INTO threads (id, rollout_path, created_at, updated_at, source, model_provider, cwd, title, sandbox_policy, approval_mode, model, reasoning_effort, history_mode, name, first_user_message, preview) VALUES ('$threadId', '', $nowSec, $nowSec, 'user', 'bridge', '$escapedCwd', '$escapedName', 'danger-full-access', 'never', '$model', 'low', 'legacy', '$escapedName', '$escapedName', '');"
       [System.IO.File]::WriteAllText($sqlFile, $sql)
 
       node -e "

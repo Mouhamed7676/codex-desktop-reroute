@@ -148,14 +148,26 @@ export function toolChoiceToChat(choice) {
   return undefined;
 }
 
+// Resolve a requested model slug to an upstream base + model id.
+// MODEL_MAP values may be:
+//   - a string: just the upstream model id, uses the default upstream base
+//   - an object { base, model }: per-model upstream base + model id
+//   - missing: falls back to the wildcard "*", then the requested slug itself
+function resolveUpstream(requested) {
+  const entry = MODEL_MAP[requested] ?? MODEL_MAP["*"];
+  if (entry === undefined) return { base: UPSTREAM_BASE_URL, model: requested };
+  if (typeof entry === "string") return { base: UPSTREAM_BASE_URL, model: entry };
+  return { base: entry.base ?? UPSTREAM_BASE_URL, model: entry.model ?? requested };
+}
+
 export function buildChatRequest(body) {
   const requested = body.model ?? "default";
-  // Wildcard lets one config survive whatever model id the client's picker sends.
-  const model = MODEL_MAP[requested] ?? MODEL_MAP["*"] ?? requested;
+  const { base, model } = resolveUpstream(requested);
   const chat = {
     model,
     messages: inputToMessages(body),
     stream: true, // ask upstream to stream tokens so the client sees them type out
+    _upstreamBase: base,
   };
   const tools = toolsToChat(body.tools);
   if (tools) {
@@ -176,7 +188,7 @@ export function buildChatRequest(body) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function callUpstream(chatRequest, signal) {
+async function callUpstream(chatRequest, signal, baseUrl) {
   let lastError;
   for (let attempt = 1; attempt <= UPSTREAM_RETRIES; attempt++) {
     const controller = new AbortController();
@@ -184,7 +196,7 @@ async function callUpstream(chatRequest, signal) {
     const onAbort = () => controller.abort();
     signal?.addEventListener("abort", onAbort, { once: true });
     try {
-      const res = await fetch(`${UPSTREAM_BASE_URL}/chat/completions`, {
+      const res = await fetch(`${baseUrl ?? UPSTREAM_BASE_URL}/chat/completions`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -527,11 +539,12 @@ async function handleResponsesStreaming(body, chatRequest, signal, res) {
   let toolOutputIndex = outputIndex + 1;
 
   const upstreamRequest = { ...chatRequest, stream: true };
+  delete upstreamRequest._upstreamBase;
   let accumulated = "";
 
   let reader;
   try {
-    const resUp = await fetch(`${UPSTREAM_BASE_URL}/chat/completions`, {
+    const resUp = await fetch(`${chatRequest._upstreamBase ?? UPSTREAM_BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -801,7 +814,8 @@ async function handleResponsesStreaming(body, chatRequest, signal, res) {
 async function handleResponsesBuffered(body, chatRequest, signal, res) {
   let chatResponse;
   try {
-    chatResponse = await callUpstream(chatRequest, signal);
+    const { _upstreamBase, ...upstreamBody } = chatRequest;
+    chatResponse = await callUpstream(upstreamBody, signal, _upstreamBase);
   } catch (err) {
     log("upstream failed:", err.message);
     throw err;
