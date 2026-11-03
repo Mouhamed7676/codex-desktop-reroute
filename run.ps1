@@ -133,7 +133,7 @@ if (-not $ready) {
   throw "bridge did not come up on port $Port; see $adapterLog"
 }
 
-Write-Host "bridge: http://127.0.0.1:$Port  ->  $($preset.upstreamBaseUrl)  ($($preset.model))"
+Write-Host "bridge: http://127.0.0.1:$Port  ->  $($preset.upstreamBaseUrl)  ($defaultModel)"
 Write-Host "health: key=$(if ($ApiKey) { 'set' } else { 'MISSING' })"
 
 try {

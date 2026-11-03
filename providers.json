@@ -9,6 +9,6 @@
     "label": "NVIDIA NIM",
     "upstreamBaseUrl": "https://integrate.api.nvidia.com/v1",
     "apiKeyEnv": "NVIDIA_API_KEY",
-    "model": "nvidia/nemotron-3.5-lightning-30b-a3b"
+    "model": "nvidia/nemotron-3.5-super-vl-120b-a12b"
   }
 }
